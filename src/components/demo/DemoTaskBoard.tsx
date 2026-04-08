@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -16,6 +16,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { TASKS_KEY as TASKS_STORAGE_KEY, TASKS_EXTRA_KEY as EXTRA_KEY } from './demoStorage';
 
 export interface Task {
   id: string;
@@ -53,6 +54,29 @@ const STATUS_COLORS: Record<string, string> = {
   'done': '#10b981',
 };
 
+function loadTasks(): Task[] {
+  try {
+    const raw = localStorage.getItem(TASKS_STORAGE_KEY);
+    if (!raw) return INITIAL_TASKS;
+    const parsed = JSON.parse(raw) as Task[];
+    // Validate basic shape to protect against stale data
+    if (!Array.isArray(parsed) || parsed.length === 0) return INITIAL_TASKS;
+    return parsed;
+  } catch {
+    return INITIAL_TASKS;
+  }
+}
+
+function loadExtra(): { assigneeRemoved: boolean } {
+  try {
+    const raw = localStorage.getItem(EXTRA_KEY);
+    if (!raw) return { assigneeRemoved: false };
+    return JSON.parse(raw) as { assigneeRemoved: boolean };
+  } catch {
+    return { assigneeRemoved: false };
+  }
+}
+
 interface ExpandedTaskCardProps {
   task: Task;
   phase: 'capture' | 'change' | 'detect';
@@ -61,6 +85,7 @@ interface ExpandedTaskCardProps {
   assigneeRemoved: boolean;
   onCapture: (id: string) => void;
   onTitleChange: () => void;
+  onTitleTextChange: (newTitle: string) => void;
   onAssigneeRemove: () => void;
 }
 
@@ -107,6 +132,7 @@ function ExpandedTaskCard({
   assigneeRemoved,
   onCapture,
   onTitleChange,
+  onTitleTextChange,
   onAssigneeRemove,
 }: ExpandedTaskCardProps) {
   const captureMode = phase === 'capture';
@@ -174,6 +200,10 @@ function ExpandedTaskCard({
               const newVal = (e.target as HTMLElement).innerText.trim();
               setEditableTitle(newVal);
               if (newVal !== task.title) onTitleChange();
+            }}
+            onBlur={e => {
+              const newVal = (e.target as HTMLElement).innerText.trim();
+              if (newVal) onTitleTextChange(newVal);
             }}
             className="w-full text-sm font-semibold leading-snug"
             style={{
@@ -411,10 +441,28 @@ export function DemoTaskBoard({
   onTaskMoved,
   onAssigneeRemove,
 }: DemoTaskBoardProps) {
-  const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
+  const [tasks, setTasks] = useState<Task[]>(() => loadTasks());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [titleChanged, setTitleChanged] = useState(false);
-  const [assigneeRemoved, setAssigneeRemoved] = useState(false);
+  const [assigneeRemoved, setAssigneeRemoved] = useState(() => loadExtra().assigneeRemoved);
+
+  // Persist tasks whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(tasks));
+    } catch {
+      // ignore
+    }
+  }, [tasks]);
+
+  // Persist assigneeRemoved whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(EXTRA_KEY, JSON.stringify({ assigneeRemoved }));
+    } catch {
+      // ignore
+    }
+  }, [assigneeRemoved]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -457,6 +505,11 @@ export function DemoTaskBoard({
   const handleTitleChange = () => {
     setTitleChanged(true);
     onTitleChange();
+  };
+
+  // Called on blur to persist the edited title text into the tasks array
+  const handleTitleTextChange = (newTitle: string) => {
+    setTasks(prev => prev.map(t => t.id === focusedTaskId ? { ...t, title: newTitle } : t));
   };
 
   return (
@@ -509,6 +562,7 @@ export function DemoTaskBoard({
                               assigneeRemoved={assigneeRemoved}
                               onCapture={onCapture}
                               onTitleChange={handleTitleChange}
+                              onTitleTextChange={handleTitleTextChange}
                               onAssigneeRemove={handleAssigneeRemove}
                             />
                           </SortableCompactCardWrapper>
@@ -521,6 +575,7 @@ export function DemoTaskBoard({
                             assigneeRemoved={assigneeRemoved}
                             onCapture={onCapture}
                             onTitleChange={handleTitleChange}
+                            onTitleTextChange={handleTitleTextChange}
                             onAssigneeRemove={handleAssigneeRemove}
                           />
                         )}

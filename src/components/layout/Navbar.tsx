@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 export function Navbar() {
   const navRef = useRef<HTMLElement>(null);
   const lastScrollY = useRef(0);
   const [hidden, setHidden] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const { pathname } = useLocation();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -57,15 +58,15 @@ export function Navbar() {
 
         {/* Nav links */}
         <div className="hidden md:flex items-center gap-6">
-          <a
-            href="#demo"
+          <Link
+            to="/demo"
             className="text-sm transition-colors duration-200"
-            style={{ color: 'var(--text-secondary)' }}
+            style={{ color: pathname === '/demo' ? 'var(--text-primary)' : 'var(--text-secondary)' }}
             onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-primary)')}
-            onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-secondary)')}
+            onMouseLeave={e => (e.currentTarget.style.color = pathname === '/demo' ? 'var(--text-primary)' : 'var(--text-secondary)')}
           >
             Live Demo
-          </a>
+          </Link>
           <Link
             to="/privacy"
             className="text-sm transition-colors duration-200"

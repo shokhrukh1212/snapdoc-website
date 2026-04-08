@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DemoApp } from './DemoApp';
+import { WIZARD_KEY, clearDemoStorage } from './demoStorage';
 
 type Phase = 'capture' | 'change' | 'detect';
 
@@ -32,7 +33,7 @@ const STEPS: StepConfig[] = [
     stepNum: 3,
     phase: 'capture',
     title: 'Capture this task\'s state',
-    description: 'With Snapdoc capturing, click the task title, its status badge, and the assignee in the highlighted card below. These are 3 natural fields you\'d interact with.',
+    description: 'With Snapdoc capturing, click the task title, its status badge, and the assignee in the highlighted card below.',
     demoPhase: 'capture',
   },
   {
@@ -53,7 +54,7 @@ const STEPS: StepConfig[] = [
     stepNum: 6,
     phase: 'detect',
     title: 'Run "Check for Changes"',
-    description: 'Open your saved guide in Snapdoc and click "Check for Changes." Snapdoc visits this page, finds each captured element, and compares it to what was recorded.',
+    description: 'Open your saved guide in Snapdoc and click "Check for Changes." Snapdoc visits this page and compares every captured element.',
     demoPhase: 'detect',
   },
   {
@@ -67,6 +68,32 @@ const STEPS: StepConfig[] = [
 
 const TOTAL_STEPS = STEPS.length;
 
+interface PersistedWizardState {
+  stepIdx: number;
+  capturedIds: string[];
+  titleChanged: boolean;
+  taskMoved: boolean;
+  assigneeRemoved: boolean;
+}
+
+function loadWizardState(): PersistedWizardState | null {
+  try {
+    const raw = localStorage.getItem(WIZARD_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as PersistedWizardState;
+  } catch {
+    return null;
+  }
+}
+
+function saveWizardState(state: PersistedWizardState) {
+  try {
+    localStorage.setItem(WIZARD_KEY, JSON.stringify(state));
+  } catch {
+    // localStorage unavailable
+  }
+}
+
 function PhaseTrack({ phase }: { phase: Phase }) {
   const phases: { id: Phase; label: string; num: number }[] = [
     { id: 'capture', label: 'Capture', num: 1 },
@@ -77,7 +104,7 @@ function PhaseTrack({ phase }: { phase: Phase }) {
   const currentIdx = order.indexOf(phase);
 
   return (
-    <div className="flex items-center gap-1 mb-5">
+    <div className="flex items-center gap-1">
       {phases.map((p, i) => {
         const done = i < currentIdx;
         const active = p.id === phase;
@@ -105,7 +132,7 @@ function PhaseTrack({ phase }: { phase: Phase }) {
               </span>
             </div>
             {i < phases.length - 1 && (
-              <div className="w-6 h-px mx-1" style={{ background: done ? '#10b981' : 'var(--border-subtle)', transition: 'background 0.4s' }} />
+              <div className="w-5 h-px mx-1" style={{ background: done ? '#10b981' : 'var(--border-subtle)', transition: 'background 0.4s' }} />
             )}
           </div>
         );
@@ -117,7 +144,7 @@ function PhaseTrack({ phase }: { phase: Phase }) {
 function ProgressItem({ label, done }: { label: string; done: boolean }) {
   return (
     <div
-      className="flex items-center gap-2.5 p-2.5 rounded-lg text-xs transition-all duration-300"
+      className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-all duration-300 whitespace-nowrap"
       style={{
         background: done ? 'rgba(16,185,129,0.07)' : 'rgba(255,255,255,0.03)',
         border: done ? '1px solid rgba(16,185,129,0.2)' : '1px solid var(--border-subtle)',
@@ -125,14 +152,14 @@ function ProgressItem({ label, done }: { label: string; done: boolean }) {
       }}
     >
       <div
-        className="w-4 h-4 rounded flex items-center justify-center shrink-0 transition-all duration-300"
+        className="w-3.5 h-3.5 rounded flex items-center justify-center shrink-0 transition-all duration-300"
         style={{
           background: done ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.05)',
           border: done ? '1px solid rgba(16,185,129,0.35)' : '1px solid var(--border-subtle)',
         }}
       >
         {done && (
-          <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+          <svg width="7" height="7" viewBox="0 0 8 8" fill="none">
             <path d="M1.5 4l2 2L6.5 2" stroke="#10b981" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
         )}
@@ -147,7 +174,7 @@ function DiffResult({ label, type }: { label: string; type: 'changed' | 'missing
   const badge = type === 'missing' ? 'Missing' : 'Changed';
   return (
     <div
-      className="flex items-center justify-between p-2.5 rounded-lg text-xs"
+      className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap"
       style={{ background: `${color}0a`, border: `1px solid ${color}25` }}
     >
       <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
@@ -159,17 +186,24 @@ function DiffResult({ label, type }: { label: string; type: 'changed' | 'missing
 }
 
 export function GuidedTour() {
-  const [stepIdx, setStepIdx] = useState(0);
+  const [stepIdx, setStepIdx] = useState<number>(() => loadWizardState()?.stepIdx ?? 0);
+  const [capturedIds, setCapturedIds] = useState<Set<string>>(() => new Set(loadWizardState()?.capturedIds ?? []));
+  const [titleChanged, setTitleChanged] = useState<boolean>(() => loadWizardState()?.titleChanged ?? false);
+  const [taskMoved, setTaskMoved] = useState<boolean>(() => loadWizardState()?.taskMoved ?? false);
+  const [assigneeRemoved, setAssigneeRemoved] = useState<boolean>(() => loadWizardState()?.assigneeRemoved ?? false);
+  const [boardKey, setBoardKey] = useState(0);
 
-  // Capture phase state
-  const [capturedIds, setCapturedIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    saveWizardState({
+      stepIdx,
+      capturedIds: [...capturedIds],
+      titleChanged,
+      taskMoved,
+      assigneeRemoved,
+    });
+  }, [stepIdx, capturedIds, titleChanged, taskMoved, assigneeRemoved]);
 
-  // Change phase state
-  const [titleChanged, setTitleChanged] = useState(false);
-  const [taskMoved, setTaskMoved] = useState(false);
-  const [assigneeRemoved, setAssigneeRemoved] = useState(false);
-
-  const step = STEPS[stepIdx];
+  const step = STEPS[stepIdx] ?? STEPS[STEPS.length - 1];
   const isLastStep = stepIdx === STEPS.length - 1;
 
   const allCaptured = capturedIds.has('task-title') && capturedIds.has('task-status') && capturedIds.has('task-assignee');
@@ -181,30 +215,27 @@ export function GuidedTour() {
     return true;
   };
 
-  const handleCapture = (id: string) => {
-    setCapturedIds(prev => new Set([...prev, id]));
-  };
-
+  const handleCapture = (id: string) => setCapturedIds(prev => new Set([...prev, id]));
   const handleNext = () => {
     if (!canAdvance()) return;
-    if (isLastStep) setStepIdx(TOTAL_STEPS); // → done state
+    if (isLastStep) setStepIdx(TOTAL_STEPS);
     else setStepIdx(i => i + 1);
   };
-
   const handleBack = () => setStepIdx(i => Math.max(i - 1, 0));
-
   const handleReset = () => {
+    clearDemoStorage();
     setStepIdx(0);
     setCapturedIds(new Set());
     setTitleChanged(false);
     setTaskMoved(false);
     setAssigneeRemoved(false);
+    setBoardKey(k => k + 1);
   };
 
   // Done state
   if (stepIdx >= TOTAL_STEPS) {
     return (
-      <div className="flex flex-col items-center justify-center text-center py-16 gap-6">
+      <div className="flex flex-col items-center justify-center text-center py-20 gap-6">
         <div
           className="w-16 h-16 rounded-2xl flex items-center justify-center"
           style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.25)' }}
@@ -226,7 +257,7 @@ export function GuidedTour() {
             href="https://chrome.google.com/webstore"
             target="_blank"
             rel="noopener noreferrer"
-            className="px-6 py-3 rounded-xl font-semibold text-sm text-white"
+            className="px-6 py-3 rounded-xl font-semibold text-sm text-white transition-opacity hover:opacity-90"
             style={{ backgroundImage: 'linear-gradient(135deg,#4f8ef7,#8b5cf6)' }}
           >
             Install Snapdoc — Free
@@ -244,142 +275,175 @@ export function GuidedTour() {
   }
 
   return (
-    <div className="grid lg:grid-cols-[300px_1fr] gap-6 items-start">
-      {/* Left: wizard panel */}
+    <div className="flex flex-col gap-4">
+
+      {/* ── Sticky horizontal wizard bar ── */}
       <div
-        className="rounded-2xl p-6 sticky top-24"
-        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}
+        className="sticky top-16 z-20 rounded-2xl"
+        style={{
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border-default)',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
+        }}
       >
-        <PhaseTrack phase={step.phase} />
+        <div className="flex items-start gap-0">
 
-        {/* Progress bar */}
-        <div className="flex items-center gap-2 mb-5">
-          <div className="h-1 flex-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{ width: `${(step.stepNum / TOTAL_STEPS) * 100}%`, backgroundImage: 'linear-gradient(90deg,#4f8ef7,#8b5cf6)' }}
-            />
+          {/* Left column: phase track + progress bar */}
+          <div className="shrink-0 flex flex-col justify-between gap-3 p-5" style={{ minWidth: '200px' }}>
+            <PhaseTrack phase={step.phase} />
+            <div className="flex items-center gap-2">
+              <div className="h-1 flex-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${(step.stepNum / TOTAL_STEPS) * 100}%`,
+                    backgroundImage: 'linear-gradient(90deg,#4f8ef7,#8b5cf6)',
+                  }}
+                />
+              </div>
+              <span className="text-xs shrink-0 tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                {step.stepNum}/{TOTAL_STEPS}
+              </span>
+            </div>
           </div>
-          <span className="text-xs shrink-0 tabular-nums" style={{ color: 'var(--text-muted)' }}>
-            {step.stepNum}/{TOTAL_STEPS}
-          </span>
-        </div>
 
-        <h3 className="text-base font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
-          {step.title}
-        </h3>
-        <p className="text-sm leading-relaxed mb-4" style={{ color: 'var(--text-secondary)' }}>
-          {step.description}
-        </p>
+          {/* Vertical divider */}
+          <div className="self-stretch w-px shrink-0" style={{ background: 'var(--border-subtle)' }} />
 
-        {/* Step 3: capture progress */}
-        {step.stepNum === 3 && (
-          <div className="mb-4 space-y-1.5">
-            <ProgressItem label="Task title — 'Publish Q2 release notes'" done={capturedIds.has('task-title')} />
-            <ProgressItem label="Status badge — 'In Progress'" done={capturedIds.has('task-status')} />
-            <ProgressItem label="Assignee — 'Sam Rivera'" done={capturedIds.has('task-assignee')} />
-            <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
-              {allCaptured ? '✓ All 3 captured — click Continue' : `${capturedIds.size}/3 — click each field in the card`}
+          {/* Center column: step title + description + step-specific content */}
+          <div className="flex-1 min-w-0 p-5">
+            <h3 className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
+              {step.title}
+            </h3>
+            <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)', maxWidth: '560px' }}>
+              {step.description}
             </p>
-          </div>
-        )}
 
-        {/* Step 5: change checklist */}
-        {step.stepNum === 5 && (
-          <div className="mb-4 space-y-1.5">
-            <ProgressItem label="Edit the task title" done={titleChanged} />
-            <ProgressItem label="Drag the card to a different column" done={taskMoved} />
-            <ProgressItem label="Remove the assignee" done={assigneeRemoved} />
-            <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
-              {allChanged ? '✓ All 3 changes made — click Continue' : `${[titleChanged, taskMoved, assigneeRemoved].filter(Boolean).length}/3 done`}
-            </p>
-          </div>
-        )}
+            {/* Step 3: capture checklist */}
+            {step.stepNum === 3 && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <ProgressItem label="Task title" done={capturedIds.has('task-title')} />
+                <ProgressItem label="Status badge" done={capturedIds.has('task-status')} />
+                <ProgressItem label="Assignee" done={capturedIds.has('task-assignee')} />
+                <span className="text-xs" style={{ color: allCaptured ? '#10b981' : 'var(--text-muted)' }}>
+                  {allCaptured ? '✓ All captured — click Continue' : `${capturedIds.size}/3 — click each field below`}
+                </span>
+              </div>
+            )}
 
-        {/* Step 6/7: diff results preview */}
-        {(step.stepNum === 6 || step.stepNum === 7) && (
-          <div className="mb-4 space-y-1.5">
-            <DiffResult label="Task title" type="changed" />
-            <DiffResult label="Status badge" type="changed" />
-            <DiffResult label="Assignee" type="missing" />
-          </div>
-        )}
+            {/* Step 5: change checklist */}
+            {step.stepNum === 5 && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <ProgressItem label="Edit title" done={titleChanged} />
+                <ProgressItem label="Drag card" done={taskMoved} />
+                <ProgressItem label="Remove assignee" done={assigneeRemoved} />
+                <span className="text-xs" style={{ color: allChanged ? '#10b981' : 'var(--text-muted)' }}>
+                  {allChanged
+                    ? '✓ All done — click Continue'
+                    : `${[titleChanged, taskMoved, assigneeRemoved].filter(Boolean).length}/3 done`}
+                </span>
+              </div>
+            )}
 
-        {/* Nav buttons */}
-        <div className="flex gap-2">
-          {stepIdx > 0 && (
-            <button
-              onClick={handleBack}
-              className="flex-1 py-2.5 rounded-xl text-sm font-medium"
-              style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
-            >
-              Back
-            </button>
-          )}
-          {step.action ? (
-            <a
-              href="https://chrome.google.com/webstore"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-center text-white hover:opacity-90 transition-opacity"
-              style={{ backgroundImage: 'linear-gradient(135deg,#4f8ef7,#8b5cf6)' }}
-              onClick={() => setTimeout(() => setStepIdx(i => i + 1), 600)}
-            >
-              {step.action}
-            </a>
-          ) : (
-            <button
-              onClick={handleNext}
-              disabled={!canAdvance()}
-              className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all duration-200"
-              style={{
-                backgroundImage: canAdvance() ? 'linear-gradient(135deg,#4f8ef7,#8b5cf6)' : undefined,
-                background: canAdvance() ? undefined : 'rgba(255,255,255,0.07)',
-                color: canAdvance() ? 'white' : 'var(--text-muted)',
-                cursor: canAdvance() ? 'pointer' : 'not-allowed',
-              }}
-            >
-              {isLastStep ? 'See the summary →' : 'Continue →'}
-            </button>
-          )}
+            {/* Steps 6–7: diff results */}
+            {(step.stepNum === 6 || step.stepNum === 7) && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <DiffResult label="Task title" type="changed" />
+                <DiffResult label="Status badge" type="changed" />
+                <DiffResult label="Assignee" type="missing" />
+              </div>
+            )}
+          </div>
+
+          {/* Vertical divider */}
+          <div className="self-stretch w-px shrink-0" style={{ background: 'var(--border-subtle)' }} />
+
+          {/* Right column: nav buttons + reset/skip */}
+          <div className="shrink-0 flex flex-col justify-between gap-2 p-5" style={{ minWidth: '200px' }}>
+            {/* Primary nav */}
+            <div className="flex gap-2">
+              {stepIdx > 0 && (
+                <button
+                  onClick={handleBack}
+                  className="px-4 py-2 rounded-xl text-sm font-medium transition-colors duration-150"
+                  style={{
+                    background: 'rgba(255,255,255,0.04)',
+                    color: 'var(--text-secondary)',
+                    border: '1px solid var(--border-subtle)',
+                  }}
+                >
+                  Back
+                </button>
+              )}
+              {step.action ? (
+                <a
+                  href="https://chrome.google.com/webstore"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 py-2 rounded-xl text-sm font-semibold text-center text-white hover:opacity-90 transition-opacity"
+                  style={{ backgroundImage: 'linear-gradient(135deg,#4f8ef7,#8b5cf6)' }}
+                  onClick={() => setTimeout(() => setStepIdx(i => i + 1), 600)}
+                >
+                  {step.action}
+                </a>
+              ) : (
+                <button
+                  onClick={handleNext}
+                  disabled={!canAdvance()}
+                  className="flex-1 py-2 rounded-xl text-sm font-semibold text-white transition-all duration-200"
+                  style={{
+                    backgroundImage: canAdvance() ? 'linear-gradient(135deg,#4f8ef7,#8b5cf6)' : undefined,
+                    background: canAdvance() ? undefined : 'rgba(255,255,255,0.07)',
+                    color: canAdvance() ? 'white' : 'var(--text-muted)',
+                    cursor: canAdvance() ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  {isLastStep ? 'See the summary →' : 'Continue →'}
+                </button>
+              )}
+            </div>
+
+            {/* Secondary: skip + reset */}
+            <div className="flex items-center justify-between">
+              {step.stepNum === 1 ? (
+                <button
+                  onClick={() => setStepIdx(1)}
+                  className="text-xs transition-colors duration-150"
+                  style={{ color: 'var(--text-muted)' }}
+                  onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-secondary)')}
+                  onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
+                >
+                  Already installed? Skip →
+                </button>
+              ) : (
+                <span />
+              )}
+              <button
+                onClick={handleReset}
+                className="text-xs transition-colors duration-150 ml-auto"
+                style={{ color: 'var(--text-muted)' }}
+                onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-secondary)')}
+                onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
+              >
+                Reset
+              </button>
+            </div>
+          </div>
+
         </div>
-        {step.stepNum === 1 && (
-          <button
-            onClick={() => setStepIdx(1)}
-            className="w-full mt-2 text-xs text-center transition-colors"
-            style={{ color: 'var(--text-muted)' }}
-            onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-secondary)')}
-            onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
-          >
-            Already installed? Skip →
-          </button>
-        )}
       </div>
 
-      {/* Right: demo app */}
-      <div>
-        <DemoApp
-          phase={step.demoPhase}
-          capturedIds={capturedIds}
-          onCapture={handleCapture}
-          onTitleChange={() => setTitleChanged(true)}
-          onTaskMoved={() => setTaskMoved(true)}
-          onAssigneeRemove={() => setAssigneeRemoved(true)}
-        />
-        <p className="mt-2 text-xs flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
-          <span
-            className="w-1.5 h-1.5 rounded-full inline-block"
-            style={{
-              background: step.demoPhase === 'capture' ? 'var(--accent-blue)' : step.demoPhase === 'change' ? '#f59e0b' : '#10b981',
-            }}
-          />
-          {step.demoPhase === 'capture'
-            ? 'Capture mode — click the 3 fields in the highlighted card'
-            : step.demoPhase === 'change'
-            ? 'Edit mode — change the title, drag the card, remove the assignee'
-            : 'Detect mode — showing post-update state that Snapdoc analyzes'}
-        </p>
-      </div>
+      {/* ── Full-width demo app ── */}
+      <DemoApp
+        key={boardKey}
+        phase={step.demoPhase}
+        capturedIds={capturedIds}
+        onCapture={handleCapture}
+        onTitleChange={() => setTitleChanged(true)}
+        onTaskMoved={() => setTaskMoved(true)}
+        onAssigneeRemove={() => setAssigneeRemoved(true)}
+      />
+
     </div>
   );
 }

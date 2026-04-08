@@ -1,13 +1,16 @@
 import { type ReactNode, useRef } from 'react';
+import { Link } from 'react-router-dom';
 
 interface CtaButtonProps {
   href: string;
   children: ReactNode;
   variant?: 'primary' | 'secondary';
   external?: boolean;
+  /** When true, uses React Router <Link> for client-side navigation */
+  routerLink?: boolean;
 }
 
-export function CtaButton({ href, children, variant = 'primary', external = false }: CtaButtonProps) {
+export function CtaButton({ href, children, variant = 'primary', external = false, routerLink = false }: CtaButtonProps) {
   const btnRef = useRef<HTMLAnchorElement>(null);
 
   const handleMouseDown = () => {
@@ -56,32 +59,51 @@ export function CtaButton({ href, children, variant = 'primary', external = fals
     );
   }
 
+  const secondaryStyle = {
+    background: 'rgba(255,255,255,0.05)',
+    color: 'var(--text-primary)',
+    border: '1px solid var(--border-default)',
+  };
+  const secondaryClassName = 'inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm transition-all duration-300';
+  const secondaryHandlers = {
+    onMouseDown: handleMouseDown,
+    onMouseUp: () => { if (btnRef.current) btnRef.current.style.transform = ''; },
+    onMouseEnter: (e: React.MouseEvent<HTMLElement>) => {
+      const el = e.currentTarget as HTMLElement;
+      el.style.background = 'rgba(255,255,255,0.08)';
+      el.style.borderColor = 'var(--border-bright)';
+      el.style.transform = 'translateY(-1px)';
+    },
+    onMouseLeave: (e: React.MouseEvent<HTMLElement>) => {
+      const el = e.currentTarget as HTMLElement;
+      el.style.background = 'rgba(255,255,255,0.05)';
+      el.style.borderColor = 'var(--border-default)';
+      el.style.transform = '';
+    },
+  };
+
+  if (routerLink) {
+    return (
+      <Link
+        to={href}
+        className={secondaryClassName}
+        style={secondaryStyle}
+        {...secondaryHandlers}
+      >
+        {children}
+      </Link>
+    );
+  }
+
   return (
     <a
       ref={btnRef}
       href={href}
       target={external ? '_blank' : undefined}
       rel={external ? 'noopener noreferrer' : undefined}
-      onMouseDown={handleMouseDown}
-      onMouseUp={() => { if (btnRef.current) btnRef.current.style.transform = ''; }}
-      className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm transition-all duration-300"
-      style={{
-        background: 'rgba(255,255,255,0.05)',
-        color: 'var(--text-primary)',
-        border: '1px solid var(--border-default)',
-      }}
-      onMouseEnter={e => {
-        const el = e.currentTarget as HTMLElement;
-        el.style.background = 'rgba(255,255,255,0.08)';
-        el.style.borderColor = 'var(--border-bright)';
-        el.style.transform = 'translateY(-1px)';
-      }}
-      onMouseLeave={e => {
-        const el = e.currentTarget as HTMLElement;
-        el.style.background = 'rgba(255,255,255,0.05)';
-        el.style.borderColor = 'var(--border-default)';
-        el.style.transform = '';
-      }}
+      className={secondaryClassName}
+      style={secondaryStyle}
+      {...secondaryHandlers}
     >
       {children}
     </a>

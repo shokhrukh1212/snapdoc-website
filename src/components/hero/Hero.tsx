@@ -72,7 +72,7 @@ export function Hero() {
             </svg>
             Install for Chrome — Free
           </CtaButton>
-          <CtaButton href="#demo" variant="secondary">
+          <CtaButton href="/demo" variant="secondary" routerLink>
             See live demo
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <path d="M3 7h8M8 4l3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
