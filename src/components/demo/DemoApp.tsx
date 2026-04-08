@@ -1,40 +1,24 @@
-import { useState, useRef } from 'react';
 import { DemoTaskBoard } from './DemoTaskBoard';
 import { DemoTeamSection } from './DemoTeamSection';
 
 interface DemoAppProps {
   phase: 'capture' | 'change' | 'detect';
-  highlightElements?: {
-    title?: boolean;
-    taskId?: string | null;
-    memberId?: string | null;
-  };
-  onTitleChanged?: () => void;
-  onTaskMoved?: () => void;
-  onMemberRemoved?: () => void;
+  capturedIds: Set<string>;
+  onCapture: (id: string) => void;
+  onTitleChange: () => void;
+  onTaskMoved: () => void;
+  onAssigneeRemove: () => void;
 }
 
 export function DemoApp({
   phase,
-  highlightElements = {},
-  onTitleChanged,
+  capturedIds,
+  onCapture,
+  onTitleChange,
   onTaskMoved,
-  onMemberRemoved,
+  onAssigneeRemove,
 }: DemoAppProps) {
-  const [title] = useState('Q2 Marketing Campaign');
-  const [titleChanged, setTitleChanged] = useState(false);
-  const titleRef = useRef<HTMLHeadingElement>(null);
-  const editMode = phase === 'change';
-
-  const handleTitleInput = () => {
-    if (!titleChanged && titleRef.current) {
-      const newText = titleRef.current.innerText.trim();
-      if (newText !== 'Q2 Marketing Campaign') {
-        setTitleChanged(true);
-        onTitleChanged?.();
-      }
-    }
-  };
+  const captureMode = phase === 'capture';
 
   return (
     <div
@@ -45,7 +29,7 @@ export function DemoApp({
         boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
       }}
     >
-      {/* App header bar */}
+      {/* Browser chrome */}
       <div
         className="flex items-center gap-2 px-4 h-10 shrink-0"
         style={{ background: 'rgba(0,0,0,0.3)', borderBottom: '1px solid var(--border-subtle)' }}
@@ -57,21 +41,30 @@ export function DemoApp({
         </div>
         <div
           className="flex-1 mx-4 h-6 rounded-md flex items-center px-3 text-xs"
-          style={{
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid var(--border-subtle)',
-            color: 'var(--text-muted)',
-          }}
+          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}
         >
           snapdoc-demo.vercel.app/taskflow
         </div>
+        {captureMode && (
+          <div
+            className="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium"
+            style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444' }}
+          >
+            <div
+              className="w-1.5 h-1.5 rounded-full"
+              style={{ background: '#ef4444', animation: 'recPulse 1.2s ease-in-out infinite' }}
+            />
+            REC
+            <style>{`@keyframes recPulse{0%,100%{opacity:1}50%{opacity:0.3}}`}</style>
+          </div>
+        )}
       </div>
 
       {/* App layout */}
-      <div className="flex" style={{ minHeight: '520px' }}>
+      <div className="flex" style={{ minHeight: '480px' }}>
         {/* Sidebar */}
         <div
-          className="w-48 shrink-0 p-4 flex flex-col gap-1"
+          className="w-40 shrink-0 p-4 flex flex-col gap-1"
           style={{ borderRight: '1px solid var(--border-subtle)', background: 'rgba(0,0,0,0.15)' }}
         >
           <div className="text-xs font-semibold mb-2 px-2" style={{ color: 'var(--text-muted)', letterSpacing: '0.08em' }}>
@@ -92,84 +85,42 @@ export function DemoApp({
         </div>
 
         {/* Main content */}
-        <div className="flex-1 p-6 overflow-auto">
-          {/* Page header */}
-          <div className="flex items-start justify-between mb-6">
+        <div className="flex-1 p-5 overflow-auto">
+          {/* Page title */}
+          <div className="flex items-center justify-between mb-5">
             <div>
-              {/* Editable title */}
-              <h2
-                ref={titleRef}
-                data-testid="project-title"
-                contentEditable={editMode}
-                suppressContentEditableWarning
-                onInput={handleTitleInput}
-                className="text-lg font-bold mb-1 rounded-md transition-all duration-200"
-                style={{
-                  color: 'var(--text-primary)',
-                  outline: 'none',
-                  border: highlightElements.title
-                    ? '2px dashed rgba(79,142,247,0.5)'
-                    : editMode && !titleChanged
-                    ? '1px dashed rgba(255,255,255,0.15)'
-                    : '1px solid transparent',
-                  padding: editMode ? '2px 8px' : '2px 0',
-                  cursor: editMode ? 'text' : 'default',
-                  background: highlightElements.title
-                    ? 'rgba(79,142,247,0.05)'
-                    : editMode
-                    ? 'rgba(255,255,255,0.03)'
-                    : 'transparent',
-                  boxShadow: highlightElements.title ? '0 0 0 3px rgba(79,142,247,0.15)' : 'none',
-                  minWidth: '200px',
-                  display: 'inline-block',
-                }}
-                title={editMode ? 'Click to edit project title' : undefined}
-              >
-                {title}
+              <h2 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
+                Q2 Marketing Campaign
               </h2>
-              {editMode && !titleChanged && (
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  Click the title above to edit it
-                </p>
-              )}
-              {titleChanged && (
-                <p className="text-xs" style={{ color: '#10b981' }}>
-                  ✓ Title changed
-                </p>
-              )}
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                {captureMode ? 'Capture the task state below' : phase === 'change' ? 'Edit the focused task' : '3 changes detected'}
+              </p>
             </div>
-            <div className="flex items-center gap-2">
-              <span
-                className="text-xs px-2.5 py-1 rounded-full"
-                style={{
-                  background: 'rgba(16,185,129,0.1)',
-                  color: '#10b981',
-                  border: '1px solid rgba(16,185,129,0.2)',
-                }}
-              >
-                Active
-              </span>
-            </div>
+            <span
+              className="text-xs px-2.5 py-1 rounded-full"
+              style={{ background: 'rgba(16,185,129,0.1)', color: '#10b981', border: '1px solid rgba(16,185,129,0.2)' }}
+            >
+              Active
+            </span>
           </div>
 
           {/* Task board */}
-          <div className="mb-6">
-            <DemoTaskBoard
-              highlightTaskId={highlightElements.taskId}
-              onTaskMoved={() => onTaskMoved?.()}
-            />
-          </div>
+          <DemoTaskBoard
+            phase={phase}
+            focusedTaskId="t3"
+            capturedIds={capturedIds}
+            onCapture={onCapture}
+            onTitleChange={onTitleChange}
+            onTaskMoved={onTaskMoved}
+            onAssigneeRemove={onAssigneeRemove}
+          />
 
-          {/* Team section */}
+          {/* Team section — purely decorative in capture/detect, functional in change */}
           <div
-            className="rounded-xl p-4"
+            className="rounded-xl p-4 mt-4"
             style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-subtle)' }}
           >
-            <DemoTeamSection
-              highlightMemberId={highlightElements.memberId}
-              onMemberRemoved={() => onMemberRemoved?.()}
-              editMode={editMode}
-            />
+            <DemoTeamSection phase={phase} />
           </div>
         </div>
       </div>

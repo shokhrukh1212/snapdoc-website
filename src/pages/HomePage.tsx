@@ -22,7 +22,7 @@ export function HomePage() {
       <SectionDivider />
 
       {/* Guided demo section */}
-      <section id="demo" className="py-24 px-6 max-w-6xl mx-auto">
+      <section id="demo" className="py-24 px-4 max-w-7xl mx-auto">
         <div className="text-center mb-12">
           <p
             className="text-xs font-semibold tracking-widest uppercase mb-3"
